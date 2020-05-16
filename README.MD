@@ -1,7 +1,7 @@
 # Nsq Hook for [Logrus](https://github.com/sirupsen/logrus) 
 <img src="https://travis-ci.org/chennqqi/nsqlogrus.svg?branch=master" />
 
-Like <github.com/sohlich/elogrus>, but for [nsq](https://github.com/nsqio/go-nsq)
+Like <https://github.com/sohlich/elogrus>, but for [nsq](https://github.com/nsqio/go-nsq)
 
 ## Changelog
 
