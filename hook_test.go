@@ -1,4 +1,4 @@
-package elogrus
+package nsqlogrus
 
 import (
 	"context"
@@ -10,47 +10,27 @@ import (
 	"testing"
 	"time"
 
-	"github.com/olivere/elastic/v7"
+	"github.com/nsqio/go-nsq"
 	"github.com/sirupsen/logrus"
 )
 
-type NewHookFunc func(client *elastic.Client, host string, level logrus.Level, index string) (*ElasticHook, error)
+type NewHookFunc func(client *nsq.Producer, host, topic string, level logrus.Level) (*ElasticHook, error)
 
 func TestSyncHook(t *testing.T) {
-	hookTest(NewElasticHook, "sync-log", t)
+	hookTest(NewNsqHook, "sync-log", t)
 }
 
 func TestAsyncHook(t *testing.T) {
-	hookTest(NewAsyncElasticHook, "async-log", t)
+	hookTest(NewAsyncNsqHook, "async-log", t)
 }
 
-func TestBulkProcessorHook(t *testing.T) {
-	hookTest(NewBulkProcessorElasticHook, "bulk-log", t)
-}
-
-func hookTest(hookfunc NewHookFunc, indexName string, t *testing.T) {
-	if r, err := http.Get("http://127.0.0.1:7777"); err != nil {
-		log.Fatal("Elastic not reachable")
-	} else {
-		buf, _ := ioutil.ReadAll(r.Body)
-		r.Body.Close()
-		fmt.Println(string(buf))
-	}
-
-	client, err := elastic.NewClient(
-		elastic.SetURL("http://127.0.0.1:7777"),
-		elastic.SetHealthcheck(false),
-		elastic.SetSniff(false))
-
+func hookTest(hookfunc NewHookFunc, topic string, t *testing.T) {
+	config := nsq.NewConfig()
+	client, err := nsq.NewProducer("127.0.0.1:4150", config)
 	if err != nil {
 		log.Panic(err)
 	}
-
-	client.
-		DeleteIndex(indexName).
-		Do(context.TODO())
-
-	hook, err := hookfunc(client, "localhost", logrus.DebugLevel, indexName)
+	hook, err := hookfunc(client, "localhost", logrus.DebugLevel, topic)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -62,69 +42,19 @@ func hookTest(hookfunc NewHookFunc, indexName string, t *testing.T) {
 	}
 
 	// Allow time for data to be processed.
-	time.Sleep(2 * time.Second)
-
-	termQuery := elastic.NewTermQuery("Host", "localhost")
-	searchResult, err := client.Search().
-		Index(indexName).
-		Query(termQuery).
-		Do(context.TODO())
-
+		consumer, err := nsq.NewConsumer(topic, "", config)
 	if err != nil {
-		t.Errorf("Search error: %v", err)
-		t.FailNow()
+		log.Panic(err)
 	}
+	consumer.ConnectToNSQD("127.0.0.1:4150")
 
-	if searchResult.TotalHits() != int64(samples) {
+	var count int64
+	consumer.AddHandler(func(message *nsq.Message) error){
+		count+=1
+	})
+	time.Sleep(100 * time.Second)
+	if count != int64(samples) {
 		t.Errorf("Not all logs pushed to elastic: expected %d got %d", samples, searchResult.TotalHits())
 		t.FailNow()
-	}
-}
-
-func TestError(t *testing.T) {
-	client, err := elastic.NewClient(
-		elastic.SetURL("http://localhost:7777"),
-		elastic.SetHealthcheck(false),
-		elastic.SetSniff(false))
-
-	if err != nil {
-		log.Panic(err)
-	}
-
-	client.
-		DeleteIndex("errorlog").
-		Do(context.TODO())
-
-	hook, err := NewElasticHook(client, "localhost", logrus.DebugLevel, "errorlog")
-	if err != nil {
-		log.Panic(err)
-		t.FailNow()
-	}
-	logrus.AddHook(hook)
-
-	logrus.WithError(fmt.Errorf("this is error")).
-		Error("Failed to handle invalid api response")
-
-	// Allow time for data to be processed.
-	time.Sleep(1 * time.Second)
-	termQuery := elastic.NewTermQuery("Host", "localhost")
-	searchResult, err := client.Search().
-		Index("errorlog").
-		Query(termQuery).
-		Do(context.TODO())
-
-	if !(searchResult.TotalHits() >= int64(1)) {
-		t.Error("No log created")
-		t.FailNow()
-	}
-
-	data := searchResult.Each(reflect.TypeOf(logrus.Entry{}))
-	for _, d := range data {
-		if l, ok := d.(logrus.Entry); ok {
-			if errData, ok := l.Data[logrus.ErrorKey]; !ok && errData != "this is error" {
-				t.Error("Error not serialized properly")
-				t.FailNow()
-			}
-		}
 	}
 }
