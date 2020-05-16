@@ -25,13 +25,13 @@ type NsqHook struct {
 }
 
 type message struct {
-	Host      string `json:"Host,omitempty"`
+	Host      string `json:"host,omitempty"`
 	Timestamp string `json:"@timestamp"`
-	File      string `json:"File,omitempty"`
-	Func      string `json:"Func,omitempty"`
-	Message   string `json:"Message,omitempty"`
+	File      string `json:"file,omitempty"`
+	Func      string `json:"func,omitempty"`
+	Message   string `json:"message,omitempty"`
 	Data      logrus.Fields
-	Level     string `json:"Level,omitempty"`
+	Level     string `json:"level,omitempty"`
 }
 
 // NewNsqHook creates new hook.

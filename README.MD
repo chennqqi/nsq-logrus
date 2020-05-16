@@ -23,6 +23,10 @@ func main() {
 	if err != nil {
 		log.Panic(err)
 	}
+	
+	//make sure all message flush
+	defer client.Stop()
+	
 	hook, err := nsqlogrus.NewAsyncNsqHook(client, "localhost", "mylog", logrus.DebugLevel)
 	if err != nil {
 		log.Panic(err)
